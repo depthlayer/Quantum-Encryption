@@ -1,66 +1,70 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Dec  3 03:14:40 2021
-
-@author: cosmi
+Improved image split and normalization script
+Generates a correlation-based random value from split image halves.
 """
 
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Nov 15 02:46:23 2021
-Split Image and do Cross-Correlation.
-@author: cosmi
-"""
-
-from skimage import io, feature
-from scipy import ndimage
 import numpy as np
 import cv2
-def correlation_coefficient(patch1, patch2):
-    product = np.mean((patch1 - patch1.mean()) * (patch2 - patch2.mean()))
-    stds = patch1.std() * patch2.std()
-    if stds == 0:
-        return 0
-    else:
-        product /= stds
-        return product
-
-# Read the image
-img = cv2.imread('leixlip2016test.jpg')
-print(img.shape)
-height = img.shape[0]
-width = img.shape[1]
-
-# Cut the image in half
-width_cutoff = width // 2
-s1 = img[:, :width_cutoff]
-s2 = img[:, width_cutoff:]
+import sys
 
 
-cv2.imwrite("splitimage1.jpg", s1)
-cv2.imwrite("splitimage2.jpg", s2)
+def safe_normalize(image: np.ndarray) -> np.ndarray:
+    """
+    Normalize image safely to unit vector.
+    Prevents division by zero.
+    """
+    norm = np.linalg.norm(image)
+    if norm == 0:
+        raise ValueError("Image norm is zero. Cannot normalize.")
+    return image / norm
 
 
-#a much simpler and faster way to generate random numbers by quantum fluctuations in 
-#the entangled photon pixels is to do this without openCV and any library 
-#for computer vision is to norm the picture arrays by
-
-picture1 = cv2.imread('splitimage1.jpg')
-picture2 = cv2.imread('splitimage1.jpg')
-picture1_norm = picture1 / np.sqrt(np.sum(picture1 ** 2))
-picture2_norm = picture2 / np.sqrt(np.sum(picture2 ** 2))
-
-
-# If you compare similar pictures the sum will return 1, i.e. compare the same pictures,
-# i.e. np.sum(picture1_norm ** 2) will always return a 1 (its the same picture!)
-# If they aren't similar, you'll get a value between 0 and 1, which should be entirely random beyond even
-#the intrinsic noise of the ccd sensor (as entanglement effectively negates shot noise)
-# therefore the non-correlations would be completely random, i.e. vacuum randomness.
-#this can produce a non-integer value
-
-random_non_int = np.sum(picture2_norm * picture1_norm)
-
-print(100/random_non_int)
+def split_image(image: np.ndarray):
+    """
+    Split image vertically into two halves.
+    """
+    height, width = image.shape[:2]
+    width_cutoff = width // 2
+    return image[:, :width_cutoff], image[:, width_cutoff:]
 
 
+def compute_correlation_random_value(img1: np.ndarray, img2: np.ndarray) -> float:
+    """
+    Compute normalized dot product between two images.
+    """
+    img1_norm = safe_normalize(img1.astype(np.float64))
+    img2_norm = safe_normalize(img2.astype(np.float64))
 
+    correlation = np.sum(img1_norm * img2_norm)
+
+    if correlation == 0:
+        raise ValueError("Correlation is zero. Cannot compute inverse.")
+
+    return 100.0 / correlation
+
+
+def main(image_path: str):
+    img = cv2.imread(image_path)
+
+    if img is None:
+        print(f"Error: Could not read image at {image_path}")
+        sys.exit(1)
+
+    print(f"Image shape: {img.shape}")
+
+    # Split without re-writing to disk
+    left_half, right_half = split_image(img)
+
+    # Compute value
+    random_value = compute_correlation_random_value(left_half, right_half)
+
+    print(f"Generated random-like value: {random_value}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python image_split_and_normed_for_random_number_generation.py <image_path>")
+        sys.exit(1)
+
+    main(sys.argv[1])
